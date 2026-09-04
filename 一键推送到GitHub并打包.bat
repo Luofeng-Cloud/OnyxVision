@@ -1,15 +1,13 @@
 @echo off
-title EmbyVision - Git Push to GitHub
+title OnyxVision (曜石视界) - Git Push to GitHub
 cd /d D:\EmbyVision
 
 echo ====================================================================
-echo      EmbyVision iOS - Pushing code to GitHub Actions
-echo      Repository: https://github.com/Luofeng-Cloud/sqkd.git
+echo      OnyxVision (曜石视界) - Pushing code to GitHub Actions
+echo      Repository: https://github.com/Luofeng-Cloud/OnyxVision.git
 echo ====================================================================
 echo.
 echo [*] Pushing commits to GitHub...
-echo [*] Note: If your browser opens a GitHub authorization window,
-echo     please click the green [Authorize] button.
 echo.
 
 git push origin main
@@ -21,7 +19,7 @@ if %ERRORLEVEL% EQU 0 (
     echo Cloud build started on GitHub Actions.
     echo Opening browser to check build progress...
     echo ====================================================================
-    start https://github.com/Luofeng-Cloud/sqkd/actions
+    start https://github.com/Luofeng-Cloud/OnyxVision/actions
 ) else (
     echo.
     echo ====================================================================
