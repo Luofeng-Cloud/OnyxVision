@@ -13,6 +13,10 @@ public struct SettingsView: View {
     @AppStorage("buffer_duration_seconds") private var bufferDurationSeconds = 30
     @AppStorage("spatial_audio_enabled") private var spatialAudioEnabled = true
     @AppStorage("speech_boost_enabled") private var speechBoostEnabled = true
+    @AppStorage("skip_intro_seconds") private var skipIntroSeconds = 0
+    @AppStorage("skip_outro_seconds") private var skipOutroSeconds = 0
+    @AppStorage("cinema_frame_rate_enabled") private var cinemaFrameRateEnabled = true
+    @AppStorage("pitch_correction_enabled") private var pitchCorrectionEnabled = true
     
     public var body: some View {
         NavigationView {
@@ -67,9 +71,26 @@ public struct SettingsView: View {
                     }
                 }
                 
+                Section(header: Text("追剧与智能连播设置"), footer: Text("剧尾 30 秒自动浮现下一集倒计时，点击即可无缝连播。开启自动跳过片头将在起播时自动跃过开场曲。")) {
+                    Picker("自动跳过片头", selection: $skipIntroSeconds) {
+                        Text("不跳过").tag(0)
+                        Text("跳过 60 秒").tag(60)
+                        Text("跳过 90 秒 (标准)").tag(90)
+                        Text("跳过 120 秒").tag(120)
+                    }
+                    Picker("自动跳过片尾", selection: $skipOutroSeconds) {
+                        Text("不跳过").tag(0)
+                        Text("跳过 60 秒").tag(60)
+                        Text("跳过 90 秒").tag(90)
+                        Text("跳过 120 秒 (标准)").tag(120)
+                    }
+                }
+                
                 Section(header: Text("杜比视界与原画引擎设置"), footer: Text("强制原画直出向服务端声明支持全规格 4K HEVC、Dolby Vision Profile 5/8.1/7、杜比全景声，服务端 0 负荷转码。")) {
                     Toggle("Apple VideoToolbox 硬件解码", isOn: $hardwareDecodeEnabled)
                     Toggle("强制原画直出 (Direct Play 零转码)", isOn: $directPlayEnforced)
+                    Toggle("24fps 电影原生帧率平滑匹配 (消除抖动)", isOn: $cinemaFrameRateEnabled)
+                    Toggle("倍速播放声音变调保持 (防止尖音)", isOn: $pitchCorrectionEnabled)
                     Toggle("AirPods 空间音频与全景声直出", isOn: $spatialAudioEnabled)
                     Toggle("电影对白人声智能增强 (Speech Boost)", isOn: $speechBoostEnabled)
                     

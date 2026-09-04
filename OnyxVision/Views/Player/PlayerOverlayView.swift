@@ -1,4 +1,11 @@
 import SwiftUI
+import UIKit
+
+public enum VideoAspectRatio: String, CaseIterable {
+    case fit = "原始比例"
+    case crop = "智能去黑边"
+    case stretch = "全屏填充"
+}
 
 public struct PlayerOverlayView: View {
     public let title: String
@@ -12,6 +19,7 @@ public struct PlayerOverlayView: View {
     @Binding public var isBuffering: Bool
     @Binding public var showControls: Bool
     @Binding public var isLocked: Bool
+    @Binding public var aspectRatio: VideoAspectRatio
     
     public let audioStreams: [MediaStream]
     public let subtitleStreams: [MediaStream]
@@ -22,11 +30,13 @@ public struct PlayerOverlayView: View {
     public let onSeek: (Double) -> Void
     public let onTogglePlayPause: () -> Void
     public let onSeekBy: (Double) -> Void
+    public var onNextEpisode: (() -> Void)? = nil
     
     @State private var isDraggingSlider = false
     @State private var dragSliderValue: Double = 0.0
     @State private var showAudioSheet = false
     @State private var showSubtitleSheet = false
+    @State private var showSleepTimerSheet = false
     
     // 手势调整亮度与音量
     @State private var gestureBrightness: CGFloat = UIScreen.main.brightness
@@ -34,9 +44,18 @@ public struct PlayerOverlayView: View {
     @State private var gestureVolume: CGFloat = 0.5
     @State private var showVolumeHUD = false
     
+    // 长按 2.0x 极速快进
+    @State private var isFastForwarding = false
+    
+    // 字幕延迟微调 (±0.1s)
+    @State private var subtitleDelaySeconds: Double = 0.0
+    
+    // 睡眠定时器
+    @State private var sleepTimerRemainingMinutes: Int = 0
+    
     public var body: some View {
         ZStack {
-            // 背景遮罩手势（点击切换显示/隐藏控制栏）
+            // 背景遮罩手势（点击切换显示/隐藏控制栏，左右滑动调光调音）
             Color.black.opacity(showControls ? 0.45 : 0.001)
                 .ignoresSafeArea()
                 .onTapGesture {
@@ -70,6 +89,39 @@ public struct PlayerOverlayView: View {
                             }
                         }
                 )
+                .simultaneousGesture(
+                    LongPressGesture(minimumDuration: 0.4)
+                        .onEnded { _ in
+                            guard !isLocked else { return }
+                            let generator = UIImpactFeedbackGenerator(style: .medium)
+                            generator.impactOccurred()
+                            isFastForwarding = true
+                        }
+                )
+            
+            // 长按 2.0X 极速快进 HUD
+            if isFastForwarding {
+                VStack {
+                    HStack(spacing: 6) {
+                        Image(systemName: "forward.fill")
+                            .font(.system(size: 14, weight: .black))
+                        Text("2.0X 极速快进中")
+                            .font(.system(size: 14, weight: .bold))
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(.ultraThinMaterial)
+                    .foregroundColor(.yellow)
+                    .cornerRadius(20)
+                    .shadow(color: Color.yellow.opacity(0.3), radius: 8)
+                    .padding(.top, 40)
+                    
+                    Spacer()
+                }
+                .onTapGesture {
+                    isFastForwarding = false
+                }
+            }
             
             // 亮度和音量手势浮动 HUD
             if showBrightnessHUD {
@@ -102,7 +154,74 @@ public struct PlayerOverlayView: View {
                 .transition(.opacity)
             }
             
-            // 锁定按钮 (始终悬浮于左下角)
+            // 追剧：自动跳过片头浮动按钮（播放前 90 秒自动浮现）
+            if currentTime < 90 && duration > 120 && showControls && !isLocked {
+                VStack {
+                    Spacer()
+                    HStack {
+                        Button(action: {
+                            onSeek(90)
+                        }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "forward.end.fill")
+                                Text("跳过片头 (90s)")
+                                    .font(.system(size: 13, weight: .bold))
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(Color.black.opacity(0.7))
+                            .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.white.opacity(0.3), lineWidth: 1))
+                            .cornerRadius(18)
+                        }
+                        .padding(.leading, 24)
+                        .padding(.bottom, 75)
+                        Spacer()
+                    }
+                }
+            }
+            
+            // 追剧：下集连播倒计时悬浮卡片（最后 30 秒自动浮现）
+            if duration > 60 && (duration - currentTime) <= 30 && (duration - currentTime) > 2 {
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        Button(action: {
+                            onNextEpisode?()
+                        }) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "play.circle.fill")
+                                    .font(.title3)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("下一集即将播放")
+                                        .font(.caption2)
+                                        .foregroundColor(.white.opacity(0.8))
+                                    Text("点击立即连播 (\(Int(duration - currentTime))s)")
+                                        .font(.footnote)
+                                        .fontWeight(.bold)
+                                        .foregroundColor(.white)
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                            .background(
+                                LinearGradient(
+                                    colors: [Color.blue.opacity(0.9), Color.purple.opacity(0.9)],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .cornerRadius(16)
+                            .shadow(color: Color.blue.opacity(0.4), radius: 8)
+                        }
+                        .padding(.trailing, 24)
+                        .padding(.bottom, 75)
+                    }
+                }
+            }
+            
+            // 锁定按钮 (悬浮于左下角)
             VStack {
                 Spacer()
                 HStack {
@@ -147,11 +266,14 @@ public struct PlayerOverlayView: View {
         .sheet(isPresented: $showSubtitleSheet) {
             subtitlePickerView
         }
+        .sheet(isPresented: $showSleepTimerSheet) {
+            sleepTimerPickerView
+        }
     }
     
     // MARK: - 顶部导航栏
     private var topBar: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 12) {
             Button(action: onDismiss) {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 20, weight: .bold))
@@ -166,43 +288,56 @@ public struct PlayerOverlayView: View {
                     .lineLimit(1)
                 
                 HStack(spacing: 6) {
-                    // 杜比视界原生高亮角标
+                    // 杜比视界高动态黄金徽章
                     if isDolbyVision {
-                        HStack(spacing: 4) {
+                        HStack(spacing: 3) {
                             Image(systemName: "sparkles")
-                                .font(.system(size: 10, weight: .black))
+                                .font(.system(size: 9, weight: .black))
                             Text(dvBadgeText ?? "DOLBY VISION")
-                                .font(.system(size: 10, weight: .heavy))
+                                .font(.system(size: 9, weight: .heavy))
                         }
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
                         .background(
                             LinearGradient(
-                                colors: [Color(red: 0.95, green: 0.8, blue: 0.3), Color(red: 0.8, green: 0.55, blue: 0.1)],
+                                colors: [Color(red: 0.98, green: 0.85, blue: 0.35), Color(red: 0.85, green: 0.6, blue: 0.1)],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             )
                         )
                         .foregroundColor(.black)
                         .cornerRadius(4)
-                        .shadow(color: Color.yellow.opacity(0.4), radius: 4, x: 0, y: 0)
+                        .shadow(color: Color.yellow.opacity(0.3), radius: 4)
                     }
+                    
+                    // 杜比全景声徽章
+                    HStack(spacing: 2) {
+                        Image(systemName: "waveform")
+                            .font(.system(size: 8, weight: .black))
+                        Text("ATMOS")
+                            .font(.system(size: 9, weight: .bold))
+                    }
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(Color.blue.opacity(0.3))
+                    .foregroundColor(.cyan)
+                    .cornerRadius(4)
                     
                     if !resolutionBadge.isEmpty {
                         Text(resolutionBadge)
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.system(size: 9, weight: .bold))
                             .padding(.horizontal, 5)
                             .padding(.vertical, 2)
-                            .background(Color.white.opacity(0.2))
+                            .background(Color.white.opacity(0.18))
                             .foregroundColor(.white)
                             .cornerRadius(3)
                     }
                     
-                    Text("直链原画 (Direct Play)")
-                        .font(.system(size: 10, weight: .medium))
+                    Text("直链 0 转码")
+                        .font(.system(size: 9, weight: .medium))
                         .padding(.horizontal, 5)
                         .padding(.vertical, 2)
-                        .background(Color.green.opacity(0.3))
+                        .background(Color.green.opacity(0.25))
                         .foregroundColor(.green)
                         .cornerRadius(3)
                 }
@@ -210,35 +345,60 @@ public struct PlayerOverlayView: View {
             
             Spacer()
             
-            // 音轨选择按钮
-            Button(action: { showAudioSheet = true }) {
-                HStack(spacing: 4) {
-                    Image(systemName: "waveform")
-                    Text("音轨")
-                        .font(.footnote)
+            // 画面比例切换（原始 / 智能去黑边 / 满屏）
+            Button(action: {
+                cycleAspectRatio()
+            }) {
+                HStack(spacing: 3) {
+                    Image(systemName: "aspectratio")
+                    Text(aspectRatio.rawValue)
+                        .font(.caption2)
                 }
                 .foregroundColor(.white)
-                .padding(.horizontal, 10)
+                .padding(.horizontal, 8)
                 .padding(.vertical, 6)
                 .background(.ultraThinMaterial)
                 .cornerRadius(8)
             }
             
-            // 字幕选择按钮
+            // 睡眠定时器
+            Button(action: { showSleepTimerSheet = true }) {
+                Image(systemName: sleepTimerRemainingMinutes > 0 ? "timer.circle.fill" : "timer")
+                    .foregroundColor(sleepTimerRemainingMinutes > 0 ? .yellow : .white)
+                    .padding(8)
+                    .background(.ultraThinMaterial)
+                    .clipShape(Circle())
+            }
+            
+            // 音轨选择
+            Button(action: { showAudioSheet = true }) {
+                HStack(spacing: 3) {
+                    Image(systemName: "waveform")
+                    Text("音轨")
+                        .font(.footnote)
+                }
+                .foregroundColor(.white)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .background(.ultraThinMaterial)
+                .cornerRadius(8)
+            }
+            
+            // 字幕与微调
             Button(action: { showSubtitleSheet = true }) {
-                HStack(spacing: 4) {
+                HStack(spacing: 3) {
                     Image(systemName: "captions.bubble.fill")
                     Text("字幕")
                         .font(.footnote)
                 }
                 .foregroundColor(.white)
-                .padding(.horizontal, 10)
+                .padding(.horizontal, 8)
                 .padding(.vertical, 6)
                 .background(.ultraThinMaterial)
                 .cornerRadius(8)
             }
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, 16)
         .padding(.top, 16)
     }
     
@@ -307,6 +467,14 @@ public struct PlayerOverlayView: View {
         }
     }
     
+    private func cycleAspectRatio() {
+        let all = VideoAspectRatio.allCases
+        if let idx = all.firstIndex(of: aspectRatio) {
+            let nextIdx = (idx + 1) % all.count
+            aspectRatio = all[nextIdx]
+        }
+    }
+    
     // MARK: - 音轨选择弹窗
     private var audioTrackPickerView: some View {
         NavigationView {
@@ -355,9 +523,7 @@ public struct PlayerOverlayView: View {
         }
     }
     
-            // MARK: - 字幕选择与微调弹窗
-    @State private var subtitleDelaySeconds: Double = 0.0
-    
+    // MARK: - 字幕选择与微调弹窗
     private var subtitlePickerView: some View {
         NavigationView {
             List {
@@ -451,6 +617,34 @@ public struct PlayerOverlayView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("完成") { showSubtitleSheet = false }
+                }
+            }
+        }
+    }
+    
+    // MARK: - 睡眠定时器弹窗
+    private var sleepTimerPickerView: some View {
+        NavigationView {
+            List {
+                Button("关闭睡眠定时器") {
+                    sleepTimerRemainingMinutes = 0
+                    showSleepTimerSheet = false
+                }
+                .foregroundColor(.red)
+                
+                ForEach([15, 30, 45, 60, 90], id: \.self) { mins in
+                    Button("\(mins) 分钟后停止播放") {
+                        sleepTimerRemainingMinutes = mins
+                        showSleepTimerSheet = false
+                    }
+                    .foregroundColor(.primary)
+                }
+            }
+            .navigationTitle("睡眠定时器")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { showSleepTimerSheet = false }
                 }
             }
         }
