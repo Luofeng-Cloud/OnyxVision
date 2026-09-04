@@ -143,9 +143,12 @@ public struct EmbyItem: Codable, Identifiable, Hashable {
         return primaryVideoStream?.dolbyVisionBadgeText
     }
     
-    /// 视频分辨率显示文本（如 "4K 2160p", "1080p"）
+    /// 视频分辨率显示文本（如 "4K UHD", "1080p"）
     public var resolutionBadge: String {
         guard let stream = primaryVideoStream else { return "" }
+        if let width = stream.width, width >= 3800 {
+            return "4K UHD"
+        }
         if let height = stream.height {
             if height >= 2100 { return "4K UHD" }
             if height >= 1000 { return "1080p" }

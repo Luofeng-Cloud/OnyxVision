@@ -318,6 +318,10 @@ public struct MediaDetailView: View {
                         self.episodes = eps
                         self.isLoadingEpisodes = false
                     }
+                } else {
+                    await MainActor.run {
+                        self.isLoadingEpisodes = false
+                    }
                 }
             }
         }
