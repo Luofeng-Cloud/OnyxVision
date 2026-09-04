@@ -53,6 +53,11 @@ public struct MediaDetailView: View {
         .onAppear {
             loadDetails()
         }
+        .onChange(of: showPlayer) { isShowing in
+            if !isShowing {
+                loadDetails()
+            }
+        }
     }
     
     // MARK: - 顶部剧照横幅
