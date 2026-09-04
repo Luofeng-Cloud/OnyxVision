@@ -37,9 +37,12 @@ public struct ServerLoginView: View {
                             .foregroundColor(.black)
                     }
                     
-                    Text("EmbyVision")
+                    Text("OnyxVision")
                         .font(.system(size: 28, weight: .bold, design: .rounded))
                         .foregroundColor(.white)
+                    Text("曜石视界 · 旗舰杜比影音")
+                        .font(.caption)
+                        .foregroundColor(.gray)
                     
                     HStack(spacing: 6) {
                         Text("原画直出")

@@ -45,9 +45,12 @@ public struct MediaSourceInfo: Codable, Identifiable, Hashable {
     
     /// 构建纯粹的 Direct Play 直链，避免任何服务端转码
     public func resolveDirectPlayUrl(serverUrl: String, itemId: String, token: String?) -> URL? {
-        // 如果服务器返回了直链相对路径，直接拼接
+        // 如果服务器返回了直链相对路径，智能检查鉴权 Token 并拼接
         if let direct = directStreamUrl, !direct.isEmpty {
-            let fullStr = direct.hasPrefix("http") ? direct : "\(serverUrl)\(direct)"
+            var fullStr = direct.hasPrefix("http") ? direct : "\(serverUrl)\(direct)"
+            if let t = token, !fullStr.contains("api_key=") {
+                fullStr += (fullStr.contains("?") ? "&" : "?") + "api_key=\(t)"
+            }
             return URL(string: fullStr)
         }
         

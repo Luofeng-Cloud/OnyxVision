@@ -155,27 +155,27 @@ public struct EmbyItem: Codable, Identifiable, Hashable {
         return ""
     }
     
-    /// 构造海报图片 URL
+    /// 构造海报图片 URL（支持无 tag 智能泛用端点兜底）
     public func posterUrl(serverUrl: String, apiKey: String?) -> URL? {
+        var urlString = "\(serverUrl)/emby/Items/\(id)/Images/Primary?maxHeight=600&quality=90"
         if let tag = imageTags?["Primary"] {
-            var urlString = "\(serverUrl)/emby/Items/\(id)/Images/Primary?maxHeight=600&tag=\(tag)&quality=90"
-            if let key = apiKey {
-                urlString += "&api_key=\(key)"
-            }
-            return URL(string: urlString)
+            urlString += "&tag=\(tag)"
         }
-        return nil
+        if let key = apiKey {
+            urlString += "&api_key=\(key)"
+        }
+        return URL(string: urlString)
     }
     
-    /// 构造背景剧照 URL
+    /// 构造背景剧照 URL（支持无 tag 智能泛用端点兜底）
     public func backdropUrl(serverUrl: String, apiKey: String?) -> URL? {
+        var urlString = "\(serverUrl)/emby/Items/\(id)/Images/Backdrop/0?maxWidth=1920&quality=90"
         if let tags = backdropImageTags, let firstTag = tags.first {
-            var urlString = "\(serverUrl)/emby/Items/\(id)/Images/Backdrop/0?maxWidth=1920&tag=\(firstTag)&quality=90"
-            if let key = apiKey {
-                urlString += "&api_key=\(key)"
-            }
-            return URL(string: urlString)
+            urlString += "&tag=\(firstTag)"
         }
-        return nil
+        if let key = apiKey {
+            urlString += "&api_key=\(key)"
+        }
+        return URL(string: urlString)
     }
 }

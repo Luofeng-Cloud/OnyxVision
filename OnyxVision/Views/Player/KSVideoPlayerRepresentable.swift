@@ -54,15 +54,21 @@ public struct VideoPlayerCoreView: View {
     #if canImport(KSPlayer)
     @ViewBuilder
     private var ksPlayerView: some View {
-        let options = KSOptions()
+        let options = makePlayerOptions()
         KSVideoPlayerView(url: config.url, options: options, title: config.title)
             .ignoresSafeArea()
-            .onAppear {
-                options.hardwareDecode = true
-                KSOptions.firstPlayerType = KSMEPlayer.self
-                KSOptions.secondPlayerType = KSAVPlayer.self
-                options.preferredForwardBufferDuration = 30.0
-            }
+    }
+    
+    private func makePlayerOptions() -> KSOptions {
+        let options = KSOptions()
+        options.hardwareDecode = true
+        KSOptions.firstPlayerType = KSMEPlayer.self
+        KSOptions.secondPlayerType = KSAVPlayer.self
+        options.preferredForwardBufferDuration = 30.0
+        if config.initialPositionSeconds > 0 {
+            options.startPlayTime = TimeInterval(config.initialPositionSeconds)
+        }
+        return options
     }
     #endif
     

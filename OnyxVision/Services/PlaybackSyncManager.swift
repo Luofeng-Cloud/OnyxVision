@@ -35,6 +35,16 @@ public class PlaybackSyncManager: ObservableObject {
     public func updatePosition(seconds: Double, isPaused: Bool) {
         self.currentTicks = Int64(seconds * 10_000_000.0)
         self.isPlaying = !isPaused
+        
+        if let server = currentServer, let itemId = currentItemId {
+            iCloudSyncManager.shared.savePlaybackPosition(
+                itemId: itemId,
+                title: "",
+                seconds: seconds,
+                duration: 0,
+                serverUrl: server.url
+            )
+        }
     }
     
     public func stopSession() {
@@ -46,6 +56,16 @@ public class PlaybackSyncManager: ObservableObject {
         }
         
         let finalTicks = currentTicks
+        let finalSeconds = Double(finalTicks) / 10_000_000.0
+        
+        iCloudSyncManager.shared.savePlaybackPosition(
+            itemId: itemId,
+            title: "",
+            seconds: finalSeconds,
+            duration: 0,
+            serverUrl: server.url
+        )
+        
         Task {
             await EmbyAPIService.shared.reportPlaybackStopped(
                 server: server,
@@ -69,6 +89,10 @@ public class PlaybackSyncManager: ObservableObject {
                       let server = self.currentServer,
                       let itemId = self.currentItemId,
                       let session = self.playSessionId else { return }
+                
+                if self.isPlaying {
+                    self.currentTicks += 10 * 10_000_000
+                }
                 
                 let ticks = self.currentTicks
                 let paused = !self.isPlaying
