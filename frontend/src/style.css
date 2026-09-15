@@ -1,0 +1,114 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+}
+
+html, body {
+  overscroll-behavior-y: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+body {
+  background-color: #0A0B0E;
+  color: #FFFFFF;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* Apple Frosted Glass / 毛玻璃质感 */
+.glass-panel {
+  background: rgba(18, 20, 29, 0.72);
+  backdrop-filter: blur(25px) saturate(190%);
+  -webkit-backdrop-filter: blur(25px) saturate(190%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-panel-heavy {
+  background: rgba(12, 14, 20, 0.88);
+  backdrop-filter: blur(35px) saturate(200%);
+  -webkit-backdrop-filter: blur(35px) saturate(200%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.glass-pill {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-pill:hover {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.25);
+  transform: translateY(-1px);
+}
+
+/* 隐藏横向与纵向原生滚动条但保持平滑滚动 */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* 渐变遮罩 */
+.hero-gradient-bottom {
+  background: linear-gradient(
+    to top,
+    #0A0B0E 0%,
+    rgba(10, 11, 14, 0.95) 20%,
+    rgba(10, 11, 14, 0.7) 45%,
+    rgba(10, 11, 14, 0.2) 75%,
+    transparent 100%
+  );
+}
+
+.hero-gradient-left {
+  background: linear-gradient(
+    to right,
+    #0A0B0E 0%,
+    rgba(10, 11, 14, 0.85) 30%,
+    rgba(10, 11, 14, 0.3) 65%,
+    transparent 100%
+  );
+}
+
+/* 全屏触控禁用默认手势冲突 */
+.touch-player {
+  touch-action: none;
+}
+
+/* 动效过渡 */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+.slide-up-enter-active,
+.slide-up-leave-active {
+  transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.slide-up-enter-from,
+.slide-up-leave-to {
+  transform: translateY(100%);
+  opacity: 0;
+}
