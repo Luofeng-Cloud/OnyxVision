@@ -287,7 +287,7 @@ async function handleSubmit() {
     // 2. 直连拉取影视条目与海报直链
     submitStatus.value = '正在同步影视海报与直链...'
     try {
-      const items = await fetchEmbyItems(fullUrl, authedUserId, userToken, 60)
+      const items = await fetchEmbyItems(fullUrl, authedUserId, userToken, 60, serverId)
       if (items && items.length > 0) {
         realMediaItems = items
       }

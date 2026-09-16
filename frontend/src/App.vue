@@ -381,7 +381,7 @@ async function handleSyncServer(serverId) {
       const counts = await fetchEmbyItemCounts(target.url, target.userId, target.token)
       if (counts.movieCount > 0) target.movieCount = Number(counts.movieCount).toLocaleString()
       if (counts.seriesCount > 0) target.seriesCount = Number(counts.seriesCount).toLocaleString()
-      const items = await fetchEmbyItems(target.url, target.userId, target.token, 60)
+      const items = await fetchEmbyItems(target.url, target.userId, target.token, 60, target.id)
       if (items && items.length > 0) {
         await cacheMedia(target.id, items)
         if (activeServerId.value === target.id) {
@@ -475,7 +475,7 @@ const moviesList = computed(() => {
 })
 
 const seriesList = computed(() => {
-  return currentMedia.value.filter(m => m.type === 'series')
+  return currentMedia.value.filter(m => m.type === 'series' || m.type === 'tv')
 })
 
 onMounted(async () => {

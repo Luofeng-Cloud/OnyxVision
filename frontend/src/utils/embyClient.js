@@ -268,7 +268,7 @@ export async function fetchFirstEpisode(serverUrl, seriesId, userId, token) {
 /**
  * 拉取 Emby 真实影视条目并转换为 OnyxVision 标准数据
  */
-export async function fetchEmbyItems(serverUrl, userId, token, limit = 60) {
+export async function fetchEmbyItems(serverUrl, userId, token, limit = 60, serverId = '') {
   const cleanUrl = serverUrl.replace(/\/+$/, '')
   const fields = 'PrimaryImageAspectRatio,ProductionYear,CommunityRating,Overview,Genres,ProviderIds,MediaSources,RunTimeTicks'
   const url = `${cleanUrl}/Users/${userId}/Items?Recursive=true&IncludeItemTypes=Movie,Series&Limit=${limit}&Fields=${fields}&SortBy=DateCreated&SortOrder=Descending`
@@ -299,6 +299,7 @@ export async function fetchEmbyItems(serverUrl, userId, token, limit = 60) {
       return {
         id: `emby_${item.Id}`,
         rawId: item.Id,
+        serverId: serverId,
         title: item.Name || '未知影视',
         originalTitle: item.OriginalTitle || item.Name || '',
         type: isSeries ? 'tv' : 'movie',
