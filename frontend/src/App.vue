@@ -287,11 +287,14 @@ import {
   getServers,
   getActiveServerId,
   setActiveServerId,
+  saveServer,
+  cacheMedia,
   removeServer,
   getCachedMedia,
   getSimulatedOffline,
   setSimulatedOffline
 } from './utils/offlineStore.js'
+import { fetchEmbyItemCounts, fetchEmbyItems } from './utils/embyClient.js'
 
 // 0毫秒冷启动：直接从沙盒同步缓存初始化，绝不白屏转圈
 const servers = ref(getInitialServers())
@@ -372,6 +375,28 @@ function handleSelectServerFromList(serverId) {
 
 async function handleSyncServer(serverId) {
   showToast('正在向本地沙盒同步全量影视索引...')
+  const target = servers.value.find(s => s.id === serverId)
+  if (target && target.token && target.userId && target.url) {
+    try {
+      const counts = await fetchEmbyItemCounts(target.url, target.userId, target.token)
+      if (counts.movieCount > 0) target.movieCount = Number(counts.movieCount).toLocaleString()
+      if (counts.seriesCount > 0) target.seriesCount = Number(counts.seriesCount).toLocaleString()
+      const items = await fetchEmbyItems(target.url, target.userId, target.token, 60)
+      if (items && items.length > 0) {
+        await cacheMedia(target.id, items)
+        if (activeServerId.value === target.id) {
+          currentMedia.value = items
+        }
+      }
+      target.syncTime = '刚刚'
+      await saveServer(target)
+      showToast('同步完毕！已离线持久化至 IndexedDB')
+      return
+    } catch (e) {
+      console.warn('[App] 直连同步异常，回退本地缓存:', e)
+    }
+  }
+
   setTimeout(async () => {
     currentMedia.value = await getCachedMedia(serverId)
     showToast('同步完毕！已离线持久化至 IndexedDB')
