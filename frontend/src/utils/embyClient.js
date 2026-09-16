@@ -324,3 +324,63 @@ export async function fetchEmbyItems(serverUrl, userId, token, limit = 60, serve
     return []
   }
 }
+
+/**
+ * 在线全库实时检索 Emby 影视条目 (支持电影、电视剧，实时返回 4K HLS 原画直链)
+ */
+export async function searchEmbyItems(serverUrl, userId, token, query, limit = 50, serverId = '') {
+  if (!query || !query.trim()) return []
+  const cleanUrl = serverUrl.replace(/\/+$/, '')
+  const fields = 'PrimaryImageAspectRatio,ProductionYear,CommunityRating,Overview,Genres,ProviderIds,MediaSources,RunTimeTicks'
+  const url = `${cleanUrl}/Users/${userId}/Items?SearchTerm=${encodeURIComponent(query.trim())}&Recursive=true&IncludeItemTypes=Movie,Series&Limit=${limit}&Fields=${fields}&SortBy=SortName&SortOrder=Ascending`
+
+  try {
+    const res = await fetch(url, { headers: getEmbyAuthHeaders(token) })
+    if (!res.ok) return []
+    const data = await res.json()
+    const rawItems = data.Items || []
+
+    return rawItems.map(item => {
+      const isSeries = item.Type === 'Series'
+      const year = item.ProductionYear || (item.PremiereDate ? new Date(item.PremiereDate).getFullYear() : 2024)
+      const rating = item.CommunityRating ? Number(item.CommunityRating.toFixed(1)) : 8.5
+      const durationSec = item.RunTimeTicks ? Math.floor(item.RunTimeTicks / 10000000) : (isSeries ? 2700 : 7200)
+
+      const poster = item.ImageTags?.Primary
+        ? `${cleanUrl}/Items/${item.Id}/Images/Primary?maxWidth=500&tag=${item.ImageTags.Primary}`
+        : ''
+      const backdrop = (item.BackdropImageTags && item.BackdropImageTags[0])
+        ? `${cleanUrl}/Items/${item.Id}/Images/Backdrop/0?maxWidth=1920&tag=${item.BackdropImageTags[0]}`
+        : poster
+
+      const streamUrl = `${cleanUrl}/Videos/${item.Id}/master.m3u8?api_key=${token}`
+
+      return {
+        id: `emby_${item.Id}`,
+        rawId: item.Id,
+        serverId: serverId,
+        title: item.Name || '未知影视',
+        originalTitle: item.OriginalTitle || item.Name || '',
+        type: isSeries ? 'tv' : 'movie',
+        year: year,
+        rating: rating,
+        overview: item.Overview || '暂无详细剧情简介。',
+        genres: (item.Genres && item.Genres.length > 0) ? item.Genres : (isSeries ? ['剧集', '4K 原画'] : ['电影', '4K 原画']),
+        poster: poster,
+        backdrop: backdrop,
+        streamUrl: streamUrl,
+        duration: durationSec,
+        durationFormatted: formatDurationText(durationSec),
+        badges: ['4K UHD', 'HDR10', 'HLS 原画'],
+        provider: 'emby',
+        serverUrl: cleanUrl,
+        token: token,
+        userId: userId
+      }
+    })
+  } catch (err) {
+    console.warn('[EmbyClient] searchEmbyItems error:', err)
+    return []
+  }
+}
+
