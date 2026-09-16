@@ -79,7 +79,7 @@
         </transition>
 
       <!-- 当未添加任何服务器或服务器中无资源时展示优雅空态 -->
-      <div v-if="!servers || servers.length === 0 || mediaList.length === 0" class="flex-1 flex flex-col items-center justify-center py-28 px-6 text-center">
+      <div v-if="!servers || servers.length === 0 || !currentMedia || currentMedia.length === 0" class="flex-1 flex flex-col items-center justify-center py-28 px-6 text-center">
         <div class="w-20 h-20 rounded-3xl bg-gradient-to-br from-[#1C1C1E] to-[#252830] border border-white/10 flex items-center justify-center mb-5 shadow-2xl">
           <!-- 翡翠绿菱形播放标 -->
           <div class="w-10 h-10 rounded-xl bg-[#28C76F] flex items-center justify-center rotate-45 shadow-[0_0_15px_rgba(40,199,111,0.5)]">
