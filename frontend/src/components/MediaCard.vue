@@ -62,7 +62,7 @@
         <span>{{ item.year }}</span>
         <span>·</span>
         <span class="truncate">{{ (Array.isArray(item.genres) ? item.genres[0] : item.genres) || '影视' }}</span>
-        <span v-if="item.type === 'series'" class="text-[10px] px-1 py-0.2 rounded bg-purple-500/20 text-purple-300 ml-auto flex-shrink-0">
+        <span v-if="item.type === 'series' || item.type === 'tv'" class="text-[10px] px-1 py-0.2 rounded bg-purple-500/20 text-purple-300 ml-auto flex-shrink-0">
           剧集
         </span>
       </div>

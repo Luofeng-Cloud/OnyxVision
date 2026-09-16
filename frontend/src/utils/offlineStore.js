@@ -388,6 +388,7 @@ export async function savePlaybackHistory(mediaItem, progress, progressTime, cur
   if (!mediaItem || !mediaItem.title) return
   const id = mediaItem.historyId || mediaItem.id || `hist_${Date.now()}`
   const record = {
+    ...mediaItem,
     id,
     mediaId: mediaItem.mediaId || mediaItem.id,
     title: mediaItem.title,
@@ -401,7 +402,15 @@ export async function savePlaybackHistory(mediaItem, progress, progressTime, cur
     duration: typeof duration === 'number' ? duration : 0,
     initialSeekTime: typeof currentTime === 'number' ? currentTime : 0,
     serverId: mediaItem.serverId || '',
-    videoUrl: mediaItem.videoUrl || '',
+    streamUrl: mediaItem.streamUrl || mediaItem.videoUrl || '',
+    videoUrl: mediaItem.streamUrl || mediaItem.videoUrl || '',
+    type: mediaItem.type || 'movie',
+    rawId: mediaItem.rawId || '',
+    serverUrl: mediaItem.serverUrl || '',
+    token: mediaItem.token || '',
+    userId: mediaItem.userId || '',
+    currentEpisode: mediaItem.currentEpisode || null,
+    provider: mediaItem.provider || 'emby',
     badges: mediaItem.badges || ['4K UHD'],
     updatedAt: Date.now()
   }
@@ -421,6 +430,23 @@ export async function savePlaybackHistory(mediaItem, progress, progressTime, cur
   }
   history.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
   lsSet('playbackHistory', history.slice(0, 50))
+
+  // 同步更新 mediaLibraries 中对应条目的进度
+  if (record.serverId) {
+    const allLibs = lsGet('mediaLibraries', {})
+    const lib = allLibs[record.serverId]
+    if (Array.isArray(lib)) {
+      const mIdx = lib.findIndex(m => m.id === record.mediaId || (record.rawId && m.rawId === record.rawId) || m.title === record.title)
+      if (mIdx >= 0) {
+        lib[mIdx].progress = record.progress
+        lib[mIdx].currentTime = record.currentTime
+        lib[mIdx].duration = record.duration
+        lsSet('mediaLibraries', allLibs)
+        idbPut('mediaLibraries', { serverId: record.serverId, items: lib, updatedAt: Date.now() }).catch(() => {})
+      }
+    }
+  }
+
   return record
 }
 
