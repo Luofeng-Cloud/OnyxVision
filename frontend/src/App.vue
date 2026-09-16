@@ -7,150 +7,231 @@
       :style="{ paddingBottom: 'calc(7.5rem + env(safe-area-inset-bottom, 0px))' }"
     >
       <!-- 顶部浮动导航栏 (对齐截图 4: 绿底菱形播放标 + OKMedia 胶囊 + 右侧 ... 菜单) -->
-      <Navbar
-        :servers="servers"
-        :current-server-id="activeServerId"
-        @select-server="switchServer"
-        @switch-to-servers="activeTab = 'servers'"
-        @open-qrcode="showQRCodeModal = true"
-        @open-settings="showAboutModal = true"
-        @go-home="resetFilter"
-      />
-
-      <!-- 搜索展开模式下的独立结果列表 -->
-      <main
-        v-if="isSearchOpen && searchQuery.trim()"
-        class="flex-1 pb-16 px-4 sm:px-8 max-w-[1720px] mx-auto w-full transition-all duration-200"
-        :style="{ paddingTop: 'calc(5.5rem + env(safe-area-inset-top, 16px))' }"
+      <!-- 模式 A：搜索模式 (当 isSearchOpen 为 true 时呈现独立全屏搜索视图，带固定返回按钮、全库在线检索与推荐标签) -->
+      <div
+        v-if="isSearchOpen"
+        class="flex-1 flex flex-col px-4 sm:px-8 max-w-[1720px] mx-auto w-full transition-all duration-200"
+        :style="{ paddingTop: 'calc(0.75rem + env(safe-area-inset-top, 16px))' }"
       >
-        <div class="flex items-center justify-between mb-6">
-          <h2 class="text-lg font-bold text-white flex items-center gap-2">
-            <span>搜索结果：</span>
-            <span class="text-emerald-400 font-normal">"{{ searchQuery }}"</span>
-            <span class="text-xs text-white/40 ml-2">({{ searchResults.length }} 部影视)</span>
-          </h2>
-          <button @click="searchQuery = ''" class="text-xs text-white/50 hover:text-white">
-            清除搜索
+        <!-- 1. 顶部搜索导航栏 (带「< 返回」按钮、输入框、在线全库状态与「取消」按钮) -->
+        <div class="flex items-center gap-2.5 sticky top-0 z-40 py-2.5 bg-[#0A0B0E]/95 backdrop-blur-xl -mx-4 px-4 sm:-mx-8 sm:px-8 border-b border-white/10 mb-4">
+          <!-- 返回按钮 -->
+          <button
+            @click="closeSearch"
+            class="flex items-center gap-1 px-3 py-2 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 text-white/90 text-xs font-semibold backdrop-blur-xl border border-white/10 transition flex-shrink-0"
+            title="退出搜索并返回影视库"
+          >
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="15 18 9 12 15 6"/>
+            </svg>
+            <span class="text-xs">返回</span>
+          </button>
+
+          <!-- 搜索输入胶囊 -->
+          <div class="flex-1 flex items-center gap-2 rounded-full bg-[#1A1C24] border border-white/15 px-4 py-2 shadow-lg focus-within:border-emerald-500/60 transition">
+            <svg class="w-4 h-4 text-white/40 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <circle cx="11" cy="11" r="7"/>
+              <line x1="16.5" y1="16.5" x2="21.5" y2="21.5"/>
+            </svg>
+            <input
+              v-model="searchQuery"
+              @input="handleSearchInput"
+              type="text"
+              placeholder="在线全库搜索电影、电视剧、动漫、演员..."
+              class="w-full bg-transparent text-xs sm:text-sm text-white placeholder-white/40 focus:outline-none"
+              autofocus
+            />
+            <!-- 清空输入小叉 -->
+            <button v-if="searchQuery" @click="clearSearch" class="text-white/40 hover:text-white p-0.5 flex-shrink-0" title="清空关键词">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <circle cx="12" cy="12" r="9" stroke-width="1.5"/>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 15L15 9M9 9l6 6"/>
+              </svg>
+            </button>
+          </div>
+
+          <!-- 取消按钮 -->
+          <button
+            @click="closeSearch"
+            class="text-xs sm:text-sm text-white/70 hover:text-white font-medium px-2 py-1 flex-shrink-0 active:scale-95 transition"
+          >
+            取消
           </button>
         </div>
 
-        <div v-if="searchResults.length > 0" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 sm:gap-6">
-          <MediaCard
-            v-for="item in searchResults"
-            :key="item.id"
-            :item="item"
-            @play="handlePlay"
-            @open-detail="handleOpenDetail"
-          />
+        <!-- 2. 检索源状态微标 -->
+        <div class="flex items-center justify-between text-xs text-white/50 mb-4 px-1">
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_6px_#28C76F]"></span>
+            <span>检索目标：<strong class="text-white">{{ activeServerName }}</strong></span>
+            <span class="px-1.5 py-0.2 text-[10px] rounded bg-emerald-500/20 text-emerald-300 font-mono">在线全库</span>
+          </div>
+          <div v-if="isSearchingOnline" class="flex items-center gap-1.5 text-emerald-400">
+            <svg class="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <circle cx="12" cy="12" r="10" stroke-width="3" stroke-dasharray="32" stroke-linecap="round"/>
+            </svg>
+            <span class="text-[11px]">正在全库实时检索...</span>
+          </div>
         </div>
-        <div v-else class="text-center py-20 text-white/40 text-sm">
-          未检索到符合条件的影视，请尝试搜索其他关键字。
-        </div>
-      </main>
 
-      <!-- 默认媒体库主页 (非搜索状态) -->
-      <div v-else class="flex-1 flex flex-col">
-        <!-- 顶部搜索输入卡片 (当点击右下角搜索按钮时滑出) -->
-        <transition name="fade">
-          <div
-            v-if="isSearchOpen"
-            class="fixed left-0 right-0 z-30 px-5 max-w-md mx-auto transition-all duration-200"
-            :style="{ top: 'calc(4rem + env(safe-area-inset-top, 16px))' }"
-          >
-            <div class="rounded-full bg-[#1A1C24]/95 backdrop-blur-2xl border border-white/20 px-4 py-2.5 flex items-center gap-2 shadow-2xl">
-              <svg class="w-4 h-4 text-white/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <circle cx="11" cy="11" r="7"/>
-                <line x1="16.5" y1="16.5" x2="21.5" y2="21.5"/>
-              </svg>
-              <input
-                v-model="searchQuery"
-                type="text"
-                placeholder="搜索已离线缓存的影视、剧集、演员..."
-                class="w-full bg-transparent text-xs text-white placeholder-white/40 focus:outline-none"
-                autofocus
-              />
-              <button v-if="searchQuery" @click="searchQuery = ''" class="text-white/40 hover:text-white p-0.5">
-                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                </svg>
+        <!-- 3. 未输入关键词时的引导页 (推荐热搜标签与搜索历史) -->
+        <div v-if="!searchQuery.trim()" class="py-4 space-y-6">
+          <div>
+            <div class="text-xs font-semibold text-white/40 uppercase tracking-wider mb-3">
+              热门影视推荐
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <button
+                v-for="tag in ['流浪地球', '师兄啊师兄', '黄金', '吞噬星空', '4K 原画', '动漫', '科幻', '动作']"
+                :key="tag"
+                @click="fillSearchTag(tag)"
+                class="px-3.5 py-1.5 rounded-full bg-white/5 hover:bg-white/10 active:scale-95 border border-white/10 text-xs text-white/80 hover:text-white transition"
+              >
+                {{ tag }}
               </button>
             </div>
           </div>
-        </transition>
 
-      <!-- 当未添加任何服务器或服务器中无资源时展示优雅空态 -->
-      <div v-if="!servers || servers.length === 0 || !currentMedia || currentMedia.length === 0" class="flex-1 flex flex-col items-center justify-center py-28 px-6 text-center">
-        <div class="w-20 h-20 rounded-3xl bg-gradient-to-br from-[#1C1C1E] to-[#252830] border border-white/10 flex items-center justify-center mb-5 shadow-2xl">
-          <!-- 翡翠绿菱形播放标 -->
-          <div class="w-10 h-10 rounded-xl bg-[#28C76F] flex items-center justify-center rotate-45 shadow-[0_0_15px_rgba(40,199,111,0.5)]">
-            <svg class="w-5 h-5 fill-white -rotate-45 translate-x-0.5" viewBox="0 0 24 24">
-              <path d="M8 5v14l11-7z" />
-            </svg>
+          <div v-if="recentSearches.length > 0">
+            <div class="flex items-center justify-between text-xs font-semibold text-white/40 uppercase tracking-wider mb-3">
+              <span>搜索历史</span>
+              <button @click="clearRecentSearches" class="text-white/30 hover:text-white/70 text-[11px]">清空</button>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <button
+                v-for="s in recentSearches"
+                :key="s"
+                @click="fillSearchTag(s)"
+                class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.03] hover:bg-white/10 border border-white/5 text-xs text-white/70 hover:text-white transition"
+              >
+                <span>{{ s }}</span>
+              </button>
+            </div>
           </div>
         </div>
-        <h2 class="text-xl font-bold text-white mb-2">尚未连接影视服务器</h2>
-        <p class="text-xs sm:text-sm text-white/50 max-w-sm mb-7 leading-relaxed">
-          请前往「资源库」添加您的 Emby / Jellyfin 服务器，登录后系统将自动为您同步载入海报墙与影视资源。
-        </p>
-        <button
-          @click="activeTab = 'servers'; showAddDrawer = true"
-          class="px-6 py-3 rounded-full bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-white text-xs sm:text-sm font-semibold shadow-lg shadow-emerald-500/25 transition-all flex items-center gap-2"
-        >
-          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-            <line x1="12" y1="5" x2="12" y2="19"/>
-            <line x1="5" y1="12" x2="19" y2="12"/>
-          </svg>
-          <span>前往「资源库」添加服务器</span>
-        </button>
+
+        <!-- 4. 搜索结果网格 (在线全库 + 本地缓存聚合去重) -->
+        <div v-else class="flex-1 pb-16">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-sm sm:text-base font-bold text-white flex items-center gap-2">
+              <span>全库检索结果：</span>
+              <span class="text-emerald-400 font-normal">"{{ searchQuery }}"</span>
+              <span class="text-xs text-white/40 font-mono">({{ searchResults.length }} 部影视)</span>
+            </h2>
+          </div>
+
+          <div v-if="searchResults.length > 0" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 sm:gap-6">
+            <MediaCard
+              v-for="item in searchResults"
+              :key="item.id"
+              :item="item"
+              @play="handlePlay"
+              @open-detail="handleOpenDetail"
+            />
+          </div>
+
+          <div v-else-if="!isSearchingOnline" class="text-center py-20 text-white/40 text-xs sm:text-sm flex flex-col items-center gap-3">
+            <svg class="w-12 h-12 text-white/20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <circle cx="11" cy="11" r="7"/>
+              <line x1="16.5" y1="16.5" x2="21.5" y2="21.5"/>
+            </svg>
+            <span>未在「{{ activeServerName }}」全库中检索到与“{{ searchQuery }}”匹配的影视</span>
+            <button
+              @click="closeSearch"
+              class="mt-2 px-5 py-2 rounded-full bg-white/10 hover:bg-white/20 text-white text-xs font-medium transition"
+            >
+              返回影视首页
+            </button>
+          </div>
+        </div>
       </div>
 
-      <!-- 默认媒体库主页 (当有服务器与资源时展示) -->
-      <main v-else class="flex-1">
-        <!-- 1. Hero Banner 沉浸式海报轮播 (支持移动端触控左右轻扫滑动) -->
-        <HeroBanner
-          :items="heroList"
-          @play="handlePlay"
-          @open-detail="handleOpenDetail"
+      <!-- 模式 B：默认非搜索媒体库主页 -->
+      <div v-else class="flex-1 flex flex-col">
+        <!-- 顶部浮动导航栏 (对齐截图 4: 绿底菱形播放标 + OKMedia 胶囊 + 右侧 ... 菜单) -->
+        <Navbar
+          :servers="servers"
+          :current-server-id="activeServerId"
+          @select-server="switchServer"
+          @switch-to-servers="activeTab = 'servers'"
+          @open-qrcode="showQRCodeModal = true"
+          @open-settings="showAboutModal = true"
+          @go-home="resetFilter"
         />
 
-        <!-- 2. 继续观看货架 -->
-        <ContinueWatchingShelf
-          v-if="continueWatchingList.length > 0"
-          :items="continueWatchingList"
-          @play="handlePlay"
-          @open-detail="handleOpenDetail"
-        />
+        <!-- 当未添加任何服务器或服务器中无资源时展示优雅空态 -->
+        <div v-if="!servers || servers.length === 0 || !currentMedia || currentMedia.length === 0" class="flex-1 flex flex-col items-center justify-center py-28 px-6 text-center">
+          <div class="w-20 h-20 rounded-3xl bg-gradient-to-br from-[#1C1C1E] to-[#252830] border border-white/10 flex items-center justify-center mb-5 shadow-2xl">
+            <!-- 翡翠绿菱形播放标 -->
+            <div class="w-10 h-10 rounded-xl bg-[#28C76F] flex items-center justify-center rotate-45 shadow-[0_0_15px_rgba(40,199,111,0.5)]">
+              <svg class="w-5 h-5 fill-white -rotate-45 translate-x-0.5" viewBox="0 0 24 24">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            </div>
+          </div>
+          <h2 class="text-xl font-bold text-white mb-2">尚未连接影视服务器</h2>
+          <p class="text-xs sm:text-sm text-white/50 max-w-sm mb-7 leading-relaxed">
+            请前往「资源库」添加您的 Emby / Jellyfin 服务器，登录后系统将自动为您同步载入海报墙与影视资源。
+          </p>
+          <button
+            @click="activeTab = 'servers'; showAddDrawer = true"
+            class="px-6 py-3 rounded-full bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-white text-xs sm:text-sm font-semibold shadow-lg shadow-emerald-500/25 transition-all flex items-center gap-2"
+          >
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            <span>前往「资源库」添加服务器</span>
+          </button>
+        </div>
 
-        <!-- 3. 4K 杜比视界 & 全景声专区 -->
-        <MediaSection
-          v-if="dolbyVisionList.length > 0"
-          title="4K 杜比视界 & 全景声专区"
-          :count="dolbyVisionList.length"
-          :items="dolbyVisionList"
-          @play="handlePlay"
-          @open-detail="handleOpenDetail"
-        />
+        <!-- 默认媒体库主页 (当有服务器与资源时展示) -->
+        <main v-else class="flex-1">
+          <!-- 1. Hero Banner 沉浸式海报轮播 (支持移动端触控左右轻扫滑动) -->
+          <HeroBanner
+            :items="heroList"
+            @play="handlePlay"
+            @open-detail="handleOpenDetail"
+          />
 
-        <!-- 4. 高分电影 -->
-        <MediaSection
-          v-if="moviesList.length > 0"
-          title="电影"
-          :count="moviesList.length"
-          :items="moviesList"
-          @play="handlePlay"
-          @open-detail="handleOpenDetail"
-        />
+          <!-- 2. 继续观看货架 -->
+          <ContinueWatchingShelf
+            v-if="continueWatchingList.length > 0"
+            :items="continueWatchingList"
+            @play="handlePlay"
+            @open-detail="handleOpenDetail"
+          />
 
-        <!-- 5. 热门剧集 & 动漫 -->
-        <MediaSection
-          v-if="seriesList.length > 0"
-          title="剧集 & 动漫"
-          :count="seriesList.length"
-          :items="seriesList"
-          @play="handlePlay"
-          @open-detail="handleOpenDetail"
-        />
-      </main>
+          <!-- 3. 4K 杜比视界 & 全景声专区 -->
+          <MediaSection
+            v-if="dolbyVisionList.length > 0"
+            title="4K 杜比视界 & 全景声专区"
+            :count="dolbyVisionList.length"
+            :items="dolbyVisionList"
+            @play="handlePlay"
+            @open-detail="handleOpenDetail"
+          />
+
+          <!-- 4. 高分电影 -->
+          <MediaSection
+            v-if="moviesList.length > 0"
+            title="电影"
+            :count="moviesList.length"
+            :items="moviesList"
+            @play="handlePlay"
+            @open-detail="handleOpenDetail"
+          />
+
+          <!-- 5. 热门剧集 & 动漫 -->
+          <MediaSection
+            v-if="seriesList.length > 0"
+            title="剧集 & 动漫"
+            :count="seriesList.length"
+            :items="seriesList"
+            @play="handlePlay"
+            @open-detail="handleOpenDetail"
+          />
+        </main>
       </div>
     </div>
 
@@ -294,17 +375,92 @@ import {
   getSimulatedOffline,
   setSimulatedOffline
 } from './utils/offlineStore.js'
-import { fetchEmbyItemCounts, fetchEmbyItems } from './utils/embyClient.js'
+import { fetchEmbyItemCounts, fetchEmbyItems, searchEmbyItems } from './utils/embyClient.js'
 
 // 0毫秒冷启动：直接从沙盒同步缓存初始化，绝不白屏转圈
 const servers = ref(getInitialServers())
 const activeServerId = ref(getInitialActiveServerId())
 const currentMedia = ref(getInitialMedia(activeServerId.value))
 
+const activeServer = computed(() => {
+  return servers.value.find(s => s.id === activeServerId.value) || servers.value[0] || null
+})
+
+const activeServerName = computed(() => {
+  return activeServer.value?.name || '当前服务器'
+})
+
 // 页面路由/Tab 状态 (对标 VidHub 导航)
 const activeTab = ref('library')
 const isSearchOpen = ref(false)
 const searchQuery = ref('')
+const onlineSearchResults = ref([])
+const isSearchingOnline = ref(false)
+let searchDebounceTimer = null
+
+const recentSearches = ref(JSON.parse(localStorage.getItem('onyx_recent_searches') || '["流浪地球", "师兄啊师兄", "黄金"]'))
+
+function saveRecentSearch(term) {
+  if (!term || !term.trim()) return
+  const t = term.trim()
+  const list = recentSearches.value.filter(item => item !== t)
+  list.unshift(t)
+  recentSearches.value = list.slice(0, 8)
+  try {
+    localStorage.setItem('onyx_recent_searches', JSON.stringify(recentSearches.value))
+  } catch (e) {}
+}
+
+function clearRecentSearches() {
+  recentSearches.value = []
+  try {
+    localStorage.removeItem('onyx_recent_searches')
+  } catch (e) {}
+}
+
+function fillSearchTag(tag) {
+  searchQuery.value = tag
+  triggerOnlineSearch(tag)
+}
+
+function handleSearchInput() {
+  clearTimeout(searchDebounceTimer)
+  searchDebounceTimer = setTimeout(() => {
+    if (searchQuery.value.trim()) {
+      triggerOnlineSearch(searchQuery.value.trim())
+    } else {
+      onlineSearchResults.value = []
+    }
+  }, 350)
+}
+
+async function triggerOnlineSearch(query) {
+  if (!query || !query.trim()) return
+  saveRecentSearch(query)
+  const s = activeServer.value
+  if (s && s.url && s.token && s.userId && !isSimulatedOffline.value) {
+    isSearchingOnline.value = true
+    try {
+      const items = await searchEmbyItems(s.url, s.userId, s.token, query, 50, s.id)
+      onlineSearchResults.value = items
+    } catch (e) {
+      console.warn('[Search] 在线搜索异常:', e)
+    } finally {
+      isSearchingOnline.value = false
+    }
+  }
+}
+
+function clearSearch() {
+  searchQuery.value = ''
+  onlineSearchResults.value = []
+}
+
+function closeSearch() {
+  isSearchOpen.value = false
+  searchQuery.value = ''
+  onlineSearchResults.value = []
+}
 
 // 抽屉与全屏页面状态
 const showAddDrawer = ref(false)
@@ -329,12 +485,18 @@ function toggleSearch() {
   isSearchOpen.value = !isSearchOpen.value
   if (isSearchOpen.value) {
     activeTab.value = 'library'
+    if (searchQuery.value.trim()) {
+      triggerOnlineSearch(searchQuery.value.trim())
+    }
+  } else {
+    clearSearch()
   }
 }
 
 function resetFilter() {
   searchQuery.value = ''
   isSearchOpen.value = false
+  onlineSearchResults.value = []
   window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
@@ -442,11 +604,13 @@ function handlePlayFromDetail(item) {
   playingMedia.value = item
 }
 
-// 搜索过滤
+// 综合搜索过滤：在线全量检索结果 + 本地缓存快速过滤聚合去重
 const searchResults = computed(() => {
   const query = searchQuery.value.trim().toLowerCase()
-  if (!query) return currentMedia.value
-  return currentMedia.value.filter(m => {
+  if (!query) return []
+
+  // 1. 本地沙盒快速匹配 (0ms 极速呈现)
+  const localMatches = (currentMedia.value || []).filter(m => {
     if (!m) return false
     const titleMatch = m.title?.toLowerCase().includes(query)
     const originalMatch = m.originalTitle?.toLowerCase().includes(query)
@@ -454,6 +618,20 @@ const searchResults = computed(() => {
     const actorMatch = Array.isArray(m.actors) && m.actors.some(a => a?.name?.toLowerCase().includes(query))
     return !!(titleMatch || originalMatch || genreMatch || actorMatch)
   })
+
+  // 2. 合并在机在线全库检索结果 (在线全库结果优先)
+  const combined = [...onlineSearchResults.value]
+  const seenKeys = new Set(combined.map(it => it.rawId || it.id))
+
+  for (const m of localMatches) {
+    const key = m.rawId || m.id
+    if (!seenKeys.has(key)) {
+      seenKeys.add(key)
+      combined.push(m)
+    }
+  }
+
+  return combined
 })
 
 // 分类派生
