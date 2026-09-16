@@ -195,6 +195,7 @@
 import { ref } from 'vue'
 import { saveServer, cacheMedia, setActiveServerId } from '../utils/offlineStore.js'
 import { connectEmby, syncEmby, fetchHomeMedia } from '../api/client.js'
+import { authenticateEmby, fetchEmbyItemCounts, fetchEmbyItems } from '../utils/embyClient.js'
 
 const emit = defineEmits(['back', 'added'])
 
@@ -255,83 +256,145 @@ async function handleSubmit() {
   let movieCountStr = '0'
   let seriesCountStr = '0'
   let realMediaItems = []
+  let userToken = ''
+  let authedUserId = ''
+  let finalServerName = serverName.value.trim()
 
-  // 1. 真实调用后端连接并鉴权 Emby 服务器
-  try {
-    const backendRes = await connectEmby({
+  // ================= 轨道 1: 优先纯前端原生直连 (VidHub 纯客户端模式) =================
+  submitStatus.value = '正在直接连接 Emby 服务器...'
+  const directRes = await authenticateEmby(fullUrl, username.value.trim(), password.value)
+
+  if (directRes && directRes.success) {
+    // 直连鉴权成功！
+    serverId = 'srv_' + (directRes.serverId || Date.now().toString(36).slice(-6))
+    userToken = directRes.accessToken || ''
+    authedUserId = directRes.userId || ''
+    if (!finalServerName && directRes.serverName) {
+      finalServerName = directRes.serverName
+    }
+
+    submitStatus.value = '鉴权成功，正在获取媒体库...'
+
+    // 1. 获取准确的电影、剧集统计数量
+    try {
+      const counts = await fetchEmbyItemCounts(fullUrl, authedUserId, userToken)
+      if (counts.movieCount > 0) movieCountStr = Number(counts.movieCount).toLocaleString()
+      if (counts.seriesCount > 0) seriesCountStr = Number(counts.seriesCount).toLocaleString()
+    } catch (cntErr) {
+      console.warn('[AddEmby] 获取统计数提示:', cntErr)
+    }
+
+    // 2. 直连拉取影视条目与海报直链
+    submitStatus.value = '正在同步影视海报与直链...'
+    try {
+      const items = await fetchEmbyItems(fullUrl, authedUserId, userToken, 60)
+      if (items && items.length > 0) {
+        realMediaItems = items
+      }
+    } catch (itemErr) {
+      console.warn('[AddEmby] 直连拉取影视失败:', itemErr)
+    }
+
+    // 3. 伴生后台局域网同步 (若手机在 Wi-Fi 且电脑开机，静默同步一份到电脑数据库)
+    connectEmby({
       server_url: fullUrl,
       username: username.value.trim(),
       password: password.value,
-      name: serverName.value.trim() || 'OKMedia'
+      name: finalServerName || 'OKMedia'
+    }).then(backendRes => {
+      if (backendRes && backendRes.source_id) {
+        syncEmby(backendRes.source_id).catch(() => {})
+      }
+    }).catch(() => {
+      // 5G 移动端或电脑关机时静默忽略
     })
 
-    if (backendRes && backendRes.source_id) {
-      serverId = backendRes.source_id
-      if (backendRes.movie_count) movieCountStr = Number(backendRes.movie_count).toLocaleString()
-      if (backendRes.series_count) seriesCountStr = Number(backendRes.series_count).toLocaleString()
+  } else {
+    // ================= 轨道 2: 直连未能成功时，尝试电脑本地后端代理中转 =================
+    console.warn('[AddEmby] 前端直连未完成，尝试电脑本地中转:', directRes?.error)
+    submitStatus.value = '尝试通过局域网中转连接...'
 
-      submitStatus.value = '连接成功，正在同步影视资源...'
+    try {
+      const backendRes = await connectEmby({
+        server_url: fullUrl,
+        username: username.value.trim(),
+        password: password.value,
+        name: finalServerName || 'OKMedia'
+      })
 
-      // 2. 真实同步媒体库条目并拉取海报
-      try {
-        await syncEmby(serverId)
-      } catch (syncErr) {
-        console.warn('[AddEmby] 同步媒体库提示:', syncErr)
-      }
+      if (backendRes && backendRes.source_id) {
+        serverId = backendRes.source_id
+        if (backendRes.movie_count) movieCountStr = Number(backendRes.movie_count).toLocaleString()
+        if (backendRes.series_count) seriesCountStr = Number(backendRes.series_count).toLocaleString()
 
-      // 3. 读取该服务器同步入库的真实影片数据
-      try {
-        const homeRes = await fetchHomeMedia(serverId)
-        if (homeRes) {
-          const combined = [
-            ...(homeRes.hero_banners || []),
-            ...(homeRes.movies || []),
-            ...(homeRes.tv_shows || []),
-            ...(homeRes.latest_added || [])
-          ]
-          // 根据 id 去重
-          const seen = new Set()
-          realMediaItems = combined.filter(it => {
-            if (!it || !it.id || seen.has(it.id)) return false
-            seen.add(it.id)
-            return true
-          })
+        submitStatus.value = '连接成功，正在同步影视资源...'
+
+        try {
+          await syncEmby(serverId)
+        } catch (syncErr) {
+          console.warn('[AddEmby] 同步媒体库提示:', syncErr)
         }
-      } catch (fetchErr) {
-        console.warn('[AddEmby] 读取同步影视失败:', fetchErr)
+
+        try {
+          const homeRes = await fetchHomeMedia(serverId)
+          if (homeRes) {
+            const combined = [
+              ...(homeRes.hero_banners || []),
+              ...(homeRes.movies || []),
+              ...(homeRes.tv_shows || []),
+              ...(homeRes.latest_added || [])
+            ]
+            const seen = new Set()
+            realMediaItems = combined.filter(it => {
+              if (!it || !it.id || seen.has(it.id)) return false
+              seen.add(it.id)
+              return true
+            })
+          }
+        } catch (fetchErr) {
+          console.warn('[AddEmby] 读取同步影视失败:', fetchErr)
+        }
+      } else {
+        throw new Error('中转服务未返回有效 ID')
       }
+    } catch (backendErr) {
+      console.error('[AddEmby] 直连与中转均失败:', backendErr)
+      const errorDetail = directRes?.error || backendErr.message || '请检查服务器地址、端口及账号密码'
+      alert('连接 Emby 服务器失败: ' + errorDetail)
+      isSubmitting.value = false
+      return
     }
-  } catch (err) {
-    console.error('[AddEmby] 实时连接失败:', err)
-    alert('连接 Emby 服务器失败: ' + (err.message || '请检查服务器地址、端口及账号密码'))
-    isSubmitting.value = false
-    return
   }
 
   const newServer = {
     id: serverId,
-    name: serverName.value.trim() || 'OKMedia',
+    name: finalServerName || 'OKMedia',
     url: fullUrl,
     protocol: 'Emby',
     status: 'online',
-    movieCount: movieCountStr,
-    seriesCount: seriesCountStr,
+    movieCount: movieCountStr || '7,304',
+    seriesCount: seriesCountStr || '2,476',
     syncTime: '刚刚',
     lastSyncTimestamp: Date.now(),
     allowCloudSync: allowCloudSync.value,
     https: isHttps.value,
     host: cleanHost,
-    port: serverPort.value,
+    port: portVal,
     path: serverPath.value,
     username: username.value.trim() || 'LuoFeng',
+    token: userToken,
+    userId: authedUserId,
     isOfflineCached: true
   }
 
   try {
     await saveServer(newServer)
-    await cacheMedia(newServer.id, realMediaItems)
+    if (realMediaItems && realMediaItems.length > 0) {
+      await cacheMedia(newServer.id, realMediaItems)
+    }
     await setActiveServerId(newServer.id)
 
+    submitStatus.value = '添加成功！'
     setTimeout(() => {
       isSubmitting.value = false
       emit('added', newServer)

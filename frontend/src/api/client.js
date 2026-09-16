@@ -33,8 +33,20 @@ export async function connectEmby(payload) {
       body: JSON.stringify(payload)
     });
     if (!res.ok) {
-      const errData = await res.json().catch(() => ({}));
-      throw new Error(errData.detail || ('HTTP ' + res.status));
+      let errorMsg = 'HTTP ' + res.status;
+      try {
+        const contentType = res.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          const errData = await res.json();
+          errorMsg = errData.detail || errorMsg;
+        } else {
+          const text = await res.text();
+          if (text) errorMsg = text.substring(0, 80);
+        }
+      } catch {
+        // Safe fallback
+      }
+      throw new Error(errorMsg);
     }
     return await res.json();
   } catch (err) {
@@ -53,7 +65,7 @@ export async function syncEmby(sourceId) {
     if (!res.ok) throw new Error('HTTP ' + res.status);
     return await res.json();
   } catch (err) {
-    console.error('[API] syncEmby error:', err);
+    console.warn('[API] syncEmby error:', err);
     throw err;
   }
 }
