@@ -182,6 +182,90 @@ export async function fetchEmbyItemCounts(serverUrl, userId, token) {
 }
 
 /**
+ * 格式化影视时长为人类可读格式
+ */
+export function formatDurationText(sec) {
+  if (!sec || isNaN(sec)) return ''
+  const total = Math.floor(sec)
+  const h = Math.floor(total / 3600)
+  const m = Math.floor((total % 3600) / 60)
+  if (h > 0) {
+    return `${h}小时 ${String(m).padStart(2, '0')}分钟`
+  }
+  return `${m}分钟`
+}
+
+/**
+ * 拉取剧集的全部选集列表
+ */
+export async function fetchEmbyEpisodes(serverUrl, seriesId, userId, token) {
+  const cleanUrl = serverUrl.replace(/\/+$/, '')
+  const url = `${cleanUrl}/Shows/${seriesId}/Episodes?UserId=${userId}&Fields=PrimaryImageAspectRatio,Overview,RunTimeTicks`
+
+  try {
+    const res = await fetch(url, { headers: getEmbyAuthHeaders(token) })
+    if (!res.ok) return []
+    const data = await res.json()
+    const items = data.Items || []
+
+    return items.map(ep => {
+      const durationSec = ep.RunTimeTicks ? Math.floor(ep.RunTimeTicks / 10000000) : 1440
+      const mins = Math.floor(durationSec / 60)
+      const still = ep.ImageTags?.Primary
+        ? `${cleanUrl}/Items/${ep.Id}/Images/Primary?maxWidth=400&tag=${ep.ImageTags.Primary}`
+        : ''
+      const epStreamUrl = `${cleanUrl}/Videos/${ep.Id}/master.m3u8?api_key=${token}`
+
+      return {
+        id: `emby_ep_${ep.Id}`,
+        rawId: ep.Id,
+        episodeNumber: ep.IndexNumber || 1,
+        seasonNumber: ep.ParentIndexNumber || 1,
+        title: ep.Name || `第 ${ep.IndexNumber || 1} 集`,
+        still: still,
+        duration: `${mins}分钟`,
+        durationSec: durationSec,
+        overview: ep.Overview || '',
+        streamUrl: epStreamUrl
+      }
+    })
+  } catch (err) {
+    console.warn('[EmbyClient] fetchEmbyEpisodes error:', err)
+    return []
+  }
+}
+
+/**
+ * 获取剧集第 1 集的独立播放信息 (用于首页直点播放)
+ */
+export async function fetchFirstEpisode(serverUrl, seriesId, userId, token) {
+  const cleanUrl = serverUrl.replace(/\/+$/, '')
+  const url = `${cleanUrl}/Shows/${seriesId}/Episodes?UserId=${userId}&Limit=1&Fields=PrimaryImageAspectRatio,Overview,RunTimeTicks`
+
+  try {
+    const res = await fetch(url, { headers: getEmbyAuthHeaders(token) })
+    if (!res.ok) return null
+    const data = await res.json()
+    const items = data.Items || []
+    if (items.length > 0) {
+      const ep = items[0]
+      const durationSec = ep.RunTimeTicks ? Math.floor(ep.RunTimeTicks / 10000000) : 1440
+      return {
+        id: `emby_ep_${ep.Id}`,
+        rawId: ep.Id,
+        episodeNumber: ep.IndexNumber || 1,
+        title: ep.Name || '第 1 集',
+        streamUrl: `${cleanUrl}/Videos/${ep.Id}/master.m3u8?api_key=${token}`,
+        durationSec: durationSec
+      }
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+/**
  * 拉取 Emby 真实影视条目并转换为 OnyxVision 标准数据
  */
 export async function fetchEmbyItems(serverUrl, userId, token, limit = 60) {
@@ -209,8 +293,8 @@ export async function fetchEmbyItems(serverUrl, userId, token, limit = 60) {
         ? `${cleanUrl}/Items/${item.Id}/Images/Backdrop/0?maxWidth=1920&tag=${item.BackdropImageTags[0]}`
         : poster
 
-      // Direct Play 播放直链
-      const streamUrl = `${cleanUrl}/Videos/${item.Id}/stream.mp4?static=true&api_key=${token}`
+      // 针对 iOS Safari / WKWebView 使用苹果官方原生硬件级 HLS 极速流
+      const streamUrl = `${cleanUrl}/Videos/${item.Id}/master.m3u8?api_key=${token}`
 
       return {
         id: `emby_${item.Id}`,
@@ -226,8 +310,12 @@ export async function fetchEmbyItems(serverUrl, userId, token, limit = 60) {
         backdrop: backdrop,
         streamUrl: streamUrl,
         duration: durationSec,
-        badges: ['4K UHD', 'HDR10', 'Direct Play'],
-        provider: 'emby'
+        durationFormatted: formatDurationText(durationSec),
+        badges: ['4K UHD', 'HDR10', 'HLS 原画'],
+        provider: 'emby',
+        serverUrl: cleanUrl,
+        token: token,
+        userId: userId
       }
     })
   } catch (err) {

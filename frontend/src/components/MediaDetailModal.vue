@@ -72,10 +72,10 @@
               <span>{{ item.year }}</span>
               <span>·</span>
               <span class="px-1.5 py-0.5 text-[10px] rounded border border-white/20 bg-white/5">
-                {{ item.contentRating }}
+                {{ item.contentRating || 'PG-13' }}
               </span>
               <span>·</span>
-              <span>{{ item.duration }}</span>
+              <span>{{ item.durationFormatted || formatDurationText(item.duration) || item.duration }}</span>
               <span>·</span>
               <span class="text-white/50">{{ Array.isArray(item.genres) ? item.genres.join(' / ') : (item.genres || '') }}</span>
             </div>
@@ -87,7 +87,7 @@
       <div class="px-6 py-4 border-b border-white/10 flex flex-wrap items-center justify-between gap-4 bg-white/[0.02]">
         <div class="flex items-center gap-3">
           <button
-            @click="$emit('play', item)"
+            @click="handleMainPlay"
             class="flex items-center gap-2.5 px-7 py-3 rounded-full bg-white text-black font-semibold text-sm hover:bg-white/90 active:scale-95 shadow-xl shadow-white/10 transition"
           >
             <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24">
@@ -144,15 +144,15 @@
         </div>
 
         <!-- 剧集选集栏（按季切换、单集 16:9 剧照与简介） -->
-        <div v-if="item.type === 'series' && item.seasons" class="space-y-4">
+        <div v-if="(item.type === 'series' || item.type === 'tv') && displaySeasons.length > 0" class="space-y-4">
           <div class="flex items-center justify-between">
             <h4 class="text-sm font-semibold uppercase tracking-wider text-white/50">
               选集列表
             </h4>
-            <!-- 季数切换 Tab -->
-            <div class="flex items-center gap-2 bg-white/5 p-1 rounded-xl border border-white/10">
+            <!-- 季数切换 Tab (若有多季) -->
+            <div v-if="displaySeasons.length > 1" class="flex items-center gap-2 bg-white/5 p-1 rounded-xl border border-white/10">
               <button
-                v-for="s in item.seasons"
+                v-for="s in displaySeasons"
                 :key="s.seasonNumber ?? s.season_number"
                 @click="activeSeason = (s.seasonNumber ?? s.season_number)"
                 class="px-3 py-1 rounded-lg text-xs font-semibold transition"
@@ -161,19 +161,25 @@
                 {{ s.seasonTitle || s.name || ('第 ' + (s.seasonNumber ?? s.season_number) + ' 季') }}
               </button>
             </div>
+            <div v-else class="text-xs text-white/40">
+              共 {{ currentSeasonEpisodes.length }} 集
+            </div>
           </div>
 
           <!-- 单集 16:9 剧照列表 -->
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div
               v-for="ep in currentSeasonEpisodes"
-              :key="ep.episodeNumber"
+              :key="ep.id || ep.episodeNumber"
               @click="$emit('play', { ...item, currentEpisode: ep })"
               class="group/ep relative bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl p-2.5 cursor-pointer transition-all duration-200 hover:scale-[1.02]"
             >
               <!-- 16:9 剧照 -->
               <div class="relative w-full aspect-video rounded-xl overflow-hidden bg-black/40 mb-2">
-                <img :src="ep.still" :alt="ep.title" class="w-full h-full object-cover group-hover/ep:scale-105 transition duration-300" />
+                <img v-if="ep.still" :src="ep.still" :alt="ep.title" class="w-full h-full object-cover group-hover/ep:scale-105 transition duration-300" />
+                <div v-else class="w-full h-full flex items-center justify-center bg-white/5 text-white/30 text-xs font-mono">
+                  第 {{ ep.episodeNumber }} 集
+                </div>
                 <div class="absolute inset-0 bg-black/30 group-hover/ep:bg-black/10 transition"></div>
                 <!-- 播放悬浮小标 -->
                 <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover/ep:opacity-100 transition">
@@ -182,7 +188,7 @@
                   </div>
                 </div>
                 <!-- 时长角标 -->
-                <span class="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 text-[10px] rounded bg-black/70 text-white font-medium">
+                <span v-if="ep.duration" class="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 text-[10px] rounded bg-black/70 text-white font-medium">
                   {{ ep.duration }}
                 </span>
               </div>
@@ -191,11 +197,17 @@
                   第 {{ ep.episodeNumber }} 集 · {{ ep.title }}
                 </span>
               </div>
-              <p class="text-[11px] text-white/50 line-clamp-2 mt-1 leading-snug">
+              <p v-if="ep.overview" class="text-[11px] text-white/50 line-clamp-2 mt-1 leading-snug">
                 {{ ep.overview }}
               </p>
             </div>
           </div>
+        </div>
+
+        <!-- 选集加载中提示 -->
+        <div v-else-if="(item.type === 'series' || item.type === 'tv') && isLoadingEpisodes" class="py-8 flex flex-col items-center justify-center gap-3">
+          <div class="w-6 h-6 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+          <span class="text-xs text-white/40">正在加载剧集列表...</span>
         </div>
 
         <!-- 演职人员横滑头像卡片 -->
@@ -294,7 +306,8 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { formatDurationText, fetchEmbyEpisodes } from '../utils/embyClient.js'
 
 const props = defineProps({
   item: {
@@ -303,14 +316,77 @@ const props = defineProps({
   }
 })
 
-defineEmits(['close', 'play'])
+const emit = defineEmits(['close', 'play'])
 
 const isFav = ref(false)
 const showSpecsDrawer = ref(false)
 const activeSeason = ref(1)
+const loadedEpisodes = ref([])
+const isLoadingEpisodes = ref(false)
 
 function toggleFavorite() {
   isFav.value = !isFav.value
+}
+
+async function loadEpisodes() {
+  if (props.item.type !== 'series' && props.item.type !== 'tv') return
+  if (props.item.seasons && props.item.seasons.length > 0) return
+
+  if (props.item.serverUrl && props.item.rawId) {
+    isLoadingEpisodes.value = true
+    try {
+      const eps = await fetchEmbyEpisodes(props.item.serverUrl, props.item.rawId, props.item.userId, props.item.token)
+      loadedEpisodes.value = eps
+    } catch (err) {
+      console.warn('[MediaDetailModal] 获取剧集失败:', err)
+    } finally {
+      isLoadingEpisodes.value = false
+    }
+  }
+}
+
+onMounted(() => {
+  loadEpisodes()
+})
+
+const displaySeasons = computed(() => {
+  if (props.item.seasons && props.item.seasons.length > 0) {
+    return props.item.seasons
+  }
+  if (loadedEpisodes.value && loadedEpisodes.value.length > 0) {
+    const seasonsMap = new Map()
+    for (const ep of loadedEpisodes.value) {
+      const sNum = ep.seasonNumber || 1
+      if (!seasonsMap.has(sNum)) {
+        seasonsMap.set(sNum, {
+          seasonNumber: sNum,
+          seasonTitle: `第 ${sNum} 季`,
+          episodes: []
+        })
+      }
+      seasonsMap.get(sNum).episodes.push(ep)
+    }
+    const list = Array.from(seasonsMap.values()).sort((a, b) => a.seasonNumber - b.seasonNumber)
+    if (list.length > 0 && !list.some(s => s.seasonNumber === activeSeason.value)) {
+      activeSeason.value = list[0].seasonNumber
+    }
+    return list
+  }
+  return []
+})
+
+const currentSeasonEpisodes = computed(() => {
+  if (displaySeasons.value.length === 0) return []
+  const s = displaySeasons.value.find(item => (item.seasonNumber ?? item.season_number) === activeSeason.value)
+  return s ? s.episodes : (displaySeasons.value[0]?.episodes || [])
+})
+
+function handleMainPlay() {
+  if ((props.item.type === 'tv' || props.item.type === 'series') && !props.item.currentEpisode && currentSeasonEpisodes.value.length > 0) {
+    emit('play', { ...props.item, currentEpisode: currentSeasonEpisodes.value[0] })
+  } else {
+    emit('play', props.item)
+  }
 }
 
 const safeSpecs = computed(() => {
@@ -327,11 +403,5 @@ const safeSpecs = computed(() => {
     fileSize: s.fileSize || s.file_size || '-',
     subtitles: Array.isArray(s.subtitles) ? s.subtitles : []
   }
-})
-
-const currentSeasonEpisodes = computed(() => {
-  if (!props.item.seasons) return []
-  const s = props.item.seasons.find(item => (item.seasonNumber ?? item.season_number) === activeSeason.value)
-  return s ? s.episodes : []
 })
 </script>

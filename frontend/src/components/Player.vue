@@ -24,10 +24,58 @@
         @timeupdate="onTimeUpdate"
         @loadedmetadata="onLoadedMetadata"
         @canplay="onCanPlay"
+        @waiting="isBuffering = true"
+        @playing="isBuffering = false"
         @ended="onEnded"
         @play="onPlay"
         @pause="onPause"
+        @error="onVideoError"
       ></video>
+    </div>
+
+    <!-- 缓冲加载 Spinner -->
+    <div
+      v-if="isBuffering && !hasPlaybackError"
+      class="absolute inset-0 z-40 flex items-center justify-center pointer-events-none bg-black/30"
+    >
+      <div class="flex flex-col items-center gap-3">
+        <svg class="w-10 h-10 text-emerald-400 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+          <circle cx="12" cy="12" r="10" stroke-width="3" stroke-dasharray="32" stroke-linecap="round"/>
+        </svg>
+        <span class="text-xs font-medium text-white/80 tracking-wide font-mono">正在载入极速原画流...</span>
+      </div>
+    </div>
+
+    <!-- 播放异常错误重试面板 -->
+    <div
+      v-if="hasPlaybackError"
+      class="absolute inset-0 z-40 flex items-center justify-center bg-black/85 px-6 text-center"
+    >
+      <div class="max-w-xs flex flex-col items-center">
+        <div class="w-12 h-12 rounded-full bg-red-500/20 text-red-400 flex items-center justify-center mb-3">
+          <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+        </div>
+        <h3 class="text-base font-bold text-white mb-1">视频播放遇到异常</h3>
+        <p class="text-xs text-white/50 mb-4 leading-relaxed">{{ errorMessage || '该媒体源响应超时或格式不受支持' }}</p>
+        <div class="flex items-center gap-3">
+          <button
+            @click="retryPlayback"
+            class="px-4 py-2 rounded-full bg-emerald-500 hover:bg-emerald-400 text-white text-xs font-semibold shadow-lg shadow-emerald-500/30 transition active:scale-95"
+          >
+            重试播放
+          </button>
+          <button
+            @click="$emit('close')"
+            class="px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 text-white text-xs font-semibold transition active:scale-95"
+          >
+            返回
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- 顶部极速 2.0X 播放呼吸 HUD -->
@@ -156,8 +204,8 @@
             <h2 class="text-base sm:text-lg font-bold text-white drop-shadow">
               {{ media.title }}
             </h2>
-            <span v-if="media.subtitle || media.currentEpisode" class="text-xs text-white/60">
-              {{ media.subtitle || (`第 ${media.currentEpisode.episodeNumber} 集 · ${media.currentEpisode.title}`) }}
+            <span v-if="media.subtitle || media.currentEpisode || resolvedEpisode" class="text-xs text-white/60">
+              {{ media.subtitle || (media.currentEpisode ? (`第 ${media.currentEpisode.episodeNumber} 集 · ${media.currentEpisode.title}`) : (resolvedEpisode ? (`${resolvedEpisode.title}`) : '')) }}
             </span>
           </div>
         </div>
@@ -167,10 +215,14 @@
           <span class="px-2 py-0.5 text-[10px] font-bold rounded bg-white/15 border border-white/20 text-white/90">
             {{ media.badges ? media.badges[1] || 'Dolby Atmos' : '4K HDR' }}
           </span>
-          <!-- 当前系统时间 -->
-          <span class="text-xs font-mono text-white/70">
-            {{ currentTimeString }}
-          </span>
+          <!-- 手机系统当前时钟指示 (带时钟小图标，杜绝与视频时长混淆) -->
+          <div class="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/10 border border-white/15 text-[11px] font-mono text-white/80 select-none shadow-sm" title="当前系统时间">
+            <svg class="w-3 h-3 text-white/60 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <polyline points="12 6 12 12 16 14"/>
+            </svg>
+            <span>{{ currentTimeString }}</span>
+          </div>
         </div>
       </div>
     </transition>
@@ -335,6 +387,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { savePlaybackHistory } from '../utils/offlineStore.js'
 import { reportPlaybackProgress } from '../api/client.js'
+import { fetchFirstEpisode } from '../utils/embyClient.js'
 
 const props = defineProps({
   media: {
@@ -356,6 +409,11 @@ const brightness = ref(1.0)
 const playbackRate = ref(1.0)
 const isFastForwarding = ref(false)
 const normalRateBeforeFF = ref(1.0)
+
+const isBuffering = ref(false)
+const hasPlaybackError = ref(false)
+const errorMessage = ref('')
+const resolvedEpisode = ref(null)
 
 const showControls = ref(true)
 let hideControlsTimer = null
@@ -400,10 +458,19 @@ const doubleTapFeedback = ref({
 })
 
 const videoSource = computed(() => {
+  // 1. 若已解析出剧集单集，优先使用单集流
+  if (resolvedEpisode.value?.streamUrl) {
+    return resolvedEpisode.value.streamUrl
+  }
+  // 2. 若传入的对象自身带有 currentEpisode
+  const epUrl = props.media.currentEpisode?.streamUrl || props.media.currentEpisode?.stream_url
+  if (epUrl) return epUrl
+  // 3. 原生直链
   const directUrl = props.media.streamUrl || props.media.stream_url || props.media.playback_url || props.media.videoUrl
   if (directUrl && (directUrl.startsWith('http://') || directUrl.startsWith('https://') || directUrl.startsWith('/api/stream/'))) {
     return directUrl
   }
+  // 4. 后端代理回退
   if (props.media.id && !String(props.media.id).startsWith('media_')) {
     return `/api/stream/${props.media.id}`
   }
@@ -750,14 +817,52 @@ function formatSeekDelta(delta) {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
-onMounted(() => {
+function onVideoError(e) {
+  console.warn('[Player] 视频播放错误:', e)
+  isBuffering.value = false
+  hasPlaybackError.value = true
+  errorMessage.value = '视频原画流载入失败或网络连接超时'
+}
+
+function retryPlayback() {
+  hasPlaybackError.value = false
+  isBuffering.value = true
+  if (videoRef.value) {
+    videoRef.value.load()
+    videoRef.value.play().catch(() => {})
+  }
+}
+
+onMounted(async () => {
   updateClock()
   clockTimer = setInterval(updateClock, 30000)
   triggerControlsActive()
   document.addEventListener('visibilitychange', handleVisibilityChange)
-  if (videoRef.value && videoRef.value.readyState >= 1) {
-    duration.value = videoRef.value.duration
-    applyInitialSeek()
+
+  // 若点击的是剧集且未传入单集，自动解析第一集进行无缝播放，杜绝 Emby HTTP 500
+  if ((props.media.type === 'tv' || props.media.type === 'series') && !props.media.currentEpisode && props.media.serverUrl && props.media.rawId) {
+    isBuffering.value = true
+    try {
+      const ep1 = await fetchFirstEpisode(props.media.serverUrl, props.media.rawId, props.media.userId, props.media.token)
+      if (ep1) {
+        resolvedEpisode.value = ep1
+      }
+    } catch (err) {
+      console.warn('[Player] 自动解析第一集失败:', err)
+    } finally {
+      isBuffering.value = false
+    }
+  }
+
+  if (videoRef.value) {
+    if (videoRef.value.readyState >= 1) {
+      duration.value = videoRef.value.duration
+      applyInitialSeek()
+    }
+    videoRef.value.play().catch(() => {
+      // 移动端需用户首次触碰交互
+      isPlaying.value = false
+    })
   }
 })
 
