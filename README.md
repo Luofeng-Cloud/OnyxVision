@@ -14,61 +14,12 @@
 [![Platform](https://img.shields.io/badge/Platform-iOS%20%7C%20Windows%20%7C%20Web-orange.svg?style=flat-square)](https://github.com/Luofeng-Cloud/OnyxVision)
 
 <p align="center">
-  <b>沉浸式 Apple HIG 磨砂毛玻璃</b> · <b>2:3 黄金比例海报墙</b> · <b>全手势触控播放内核</b> · <b>Emby / Jellyfin / WebDAV 全协议直连</b> · <b>iPhone 扫码即映 PWA 与原生 .ipa</b>
+  <b>沉浸式 Apple HIG 磨砂毛玻璃</b> · <b>2:3 黄金比例海报墙</b> · <b>全手势触控播放内核</b> · <b>Emby / Jellyfin / WebDAV 全协议直连</b> · <b>iPhone 扫码即映 PWA 与 Capacitor 跨端原生架构</b>
 </p>
 
-[📥 获取 iOS 安装包 (.ipa)](#-ios-安装包获取) | [📱 iOS 侧载安装指南](#-ios-侧载安装指南-sideloading) | [🇨🇳 简体中文](#-简体中文) | [🇺🇸 English](#-english)
+[🇨🇳 简体中文](#-简体中文) | [🇺🇸 English](#-english) | [🏗️ 架构概览](#️-架构概览--architecture) | [🚀 开发者从源码运行](#-开发者快速开始-run-from-source)
 
 </div>
-
----
-
-## 📥 iOS 安装包获取
-
-> [!TIP]
-> OnyxVision 已全线打通 GitHub Actions 工业级云端打包流，每一版 Release 均由官方 macOS 运行器直接生成免签标准 `.ipa` 安装包。
-
-- 🚀 **最新版本下载**：前往 [GitHub Releases 页面](https://github.com/Luofeng-Cloud/OnyxVision/releases) 直接获取最新 `OnyxVision.ipa`。
-- 📦 **免签包直链**：[下载最新发布版 OnyxVision.ipa](https://github.com/Luofeng-Cloud/OnyxVision/releases/latest/download/OnyxVision.ipa)
-
----
-
-## 📱 iOS 侧载安装指南 (Sideloading)
-
-由于本项目当前分发的是**免签标准 .ipa 安装包**，用户可通过以下主流侧载途径将应用安装至 iPhone 或 iPad：
-
-### 方式一：TrollStore 巨魔商店（首选推荐 ⭐️⭐️⭐️⭐️⭐️）
-- **适用场景**：iOS 14.0 - 16.6.1 / 17.0（符合巨魔漏洞支持的设备）。
-- **优势**：**永久免重签、免越狱、安装后永不过期、无证书失效风险**。
-- **操作流程**：
-  1. 在 iPhone 的 Safari 浏览器中直接下载 `OnyxVision.ipa`。
-  2. 下载完成后点击“共享”按钮，选择 **“在 TrollStore 中打开”**。
-  3. 点击 **Install** 即可秒级完成安装并原生常驻手机。
-
-### 方式二：AltStore / Sideloadly（电脑辅助自签 ⭐️⭐️⭐️⭐️）
-- **适用场景**：所有 iOS 版本的未越狱 iPhone / iPad。
-- **优势**：官方 Apple ID 个人免费开发者证书签名，安全稳定。
-- **操作流程**：
-  1. 在电脑端（Windows 或 macOS）安装 [Sideloadly](https://sideloadly.io/) 或 [AltStore](https://altstore.io/)。
-  2. 数据线连接 iPhone 与电脑，打开 Sideloadly 并将下载好的 `OnyxVision.ipa` 拖拽进窗口。
-  3. 输入自己的 Apple ID 账号密码（建议使用备用小号或专用密码）。
-  4. 点击 **Start** 自动完成证书签名并推送到 iPhone。
-  5. 手机端首次打开前，进入 **设置 -> 通用 -> VPN与设备管理**，信任对应的开发者证书即可启动。
-  *（注：个人免费证书有效期为 7 天，连接同一局域网可自动无缝续签）*
-
-### 方式三：牛蛙助手 / 全能签 / 个人证书移动端直签 ⭐️⭐️⭐️⭐️
-- **适用场景**：持有个人开发者证书、企业证书或配备牛蛙助手移动端的用户。
-- **操作流程**：
-  1. 将 `OnyxVision.ipa` 导入到移动端签名应用（如牛蛙助手、全能签、Scarlet、ESign）。
-  2. 绑定自有证书后点击“立即签名”，安装生成的已签名版本即可。
-
-### 方式四：iPhone 扫码即映 (PWA 极速模式 ⭐️⭐️⭐️⭐️)
-- **适用场景**：无需任何证书、不借助任何侧载工具。
-- **操作流程**：
-  1. 电脑端启动 OnyxVision 后，终端或前端界面会显示局域网直连二维码。
-  2. iPhone 打开自带相机扫码进入。
-  3. 点击 Safari 底部 **“分享” -> “添加到主屏幕”**。
-  4. 回到桌面启动，即刻享有独立全屏、无 Safari 顶底栏遮挡的媲美原生 App 体验！
 
 ---
 
@@ -118,25 +69,61 @@
    - **WebDAV / Alist 挂载**：支持挂载各类私有 NAS、阿里云盘、网盘聚合。
    - **本地影视扫库**：内置多阶段正则清洗器，剥离压制组与技术标签，对接 TMDB API v3 智能刮削。
 
+5. **iPhone 扫码即映 (局域网即连与 PWA 极速体验)**
+   - 电脑端启动服务后，终端与界面自动生成当前 Wi-Fi 局域网直连二维码。
+   - 移动设备相机扫码秒级接入，支持 Safari “添加到主屏幕” 获得全屏沉浸独立应用体验。
+
 ---
 
-### 🚀 快速启动
+## 🚀 开发者快速开始 (Run from Source)
 
-#### 方式一：Windows 一键启动 (推荐)
-直接双击运行工程根目录下的：
+### 1. 克隆代码仓库
+```bash
+git clone https://github.com/Luofeng-Cloud/OnyxVision.git
+cd OnyxVision
+```
+
+### 2. 后端服务启动 (FastAPI)
+```bash
+# 安装 Python 核心依赖 (推荐 Python 3.10+)
+pip install -r backend/requirements.txt
+
+# 准备环境变量配置文件
+cp .env.example .env
+
+# 启动后端核心服务 (默认监听 0.0.0.0:8000)
+python backend/run.py
+```
+
+### 3. 前端工程构建与调试 (Vue 3 + Vite)
+```bash
+cd frontend
+
+# 安装前端依赖
+npm install
+
+# 启动本地热重载开发服务器
+npm run dev
+
+# 编译生产环境静态资源 (输出至 backend/static 目录供后端一体化托管)
+npm run build
+```
+
+### 4. 移动端 Capacitor 原生同步 (可选)
+```bash
+# 同步构建产物至 iOS 原生工程
+npx cap sync ios
+
+# 使用 Xcode 打开 iOS 项目进行本地联调与签名构建
+npx cap open ios
+```
+
+### 5. Windows 平台快速启动脚本
+在工程根目录下直接执行批处理脚本：
 ```bat
 run_onyxvision.bat
 ```
-系统将自动启动后端服务，并在 2 秒后自动在默认浏览器中打开 OnyxVision 首页：`http://127.0.0.1:8000`。
-
-#### 方式二：命令行手动启动
-```bash
-# 安装依赖
-pip install -r backend/requirements.txt
-
-# 启动服务
-python backend/run.py
-```
+脚本将自动在后台挂载服务并在默认浏览器中唤起 `http://127.0.0.1:8000`。
 
 ---
 
